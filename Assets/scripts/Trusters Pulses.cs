@@ -5,7 +5,7 @@ using System.Text;
 using UnityEngine;
 using System.Threading;
 
-public class ThrustersWithRotation : MonoBehaviour
+public class ThrustersPulses : MonoBehaviour
 {
     // Thruster control variables
     Thread thrusterThread;
@@ -25,7 +25,12 @@ public class ThrustersWithRotation : MonoBehaviour
     private Vector3[] previousThrusterEulerAngles;
     private bool hasFixedUpdateBeenCalledThisFrame;
 
-    void Start()
+    // Public variable to control the pulse duration
+    public float pulseDuration = 0.1f; // Default pulse duration is 0.1 seconds
+
+    private float pulseStartTime; // Time when the pulse started
+
+    void Awake()
     {
         // Check if the thrusterLocations array is assigned
         if (thrusterLocations == null || thrusterLocations.Length == 0)
@@ -59,7 +64,10 @@ public class ThrustersWithRotation : MonoBehaviour
         previousThrusterMagnitudes = new float[thrusterMagnitudes.Length];
         previousThrusterEulerAngles = new Vector3[rotationAngles.Length];
         hasFixedUpdateBeenCalledThisFrame = false;
+    }
 
+    void Start()
+    {
         // Create a TcpListener to listen for incoming connections on the specified port
         thrusterListener = new TcpListener(IPAddress.Parse(thrusterConnectionIP), thrusterConnectionPort);
         thrusterListener.Start();
@@ -91,7 +99,16 @@ public class ThrustersWithRotation : MonoBehaviour
             {
                 Debug.Log("Thruster " + i + " magnitude changed to " + thrusterMagnitudes[i]);
                 previousThrusterMagnitudes[i] = thrusterMagnitudes[i];
+
+                // If the thruster magnitude has changed, start the pulse timer
+                pulseStartTime = Time.time;
             }
+
+            // Convert the thruster magnitude to a percentage
+            float percentage = thrusterMagnitudes[i] / 100f;
+
+            // Calculate the force based on the percentage and the maximum thrust force
+            float force = percentage * 302.5f;
 
             // Create rotation quaternion from Euler angles
             Quaternion rotation = Quaternion.Euler(rotationAngles[i]);
@@ -100,14 +117,15 @@ public class ThrustersWithRotation : MonoBehaviour
             Vector3 worldSpaceThrusterDirection = transform.TransformDirection(thrusterDirections[i]);
 
             // Rotate the force vector by the thruster rotation
-            Vector3 rotatedForce = rotation * (worldSpaceThrusterDirection * thrusterMagnitudes[i]);
+            Vector3 rotatedForce = rotation * (worldSpaceThrusterDirection * force);
 
-            // Apply the rotated force at the thruster location
-            Rb.AddForceAtPosition(rotatedForce, thrusterLocations[i].transform.position);
+            // Apply the rotated force at the thruster location as an impulse
+            Rb.AddForceAtPosition(rotatedForce, thrusterLocations[i].transform.position, ForceMode.Impulse);
 
             // Draw a ray to visualize the thruster direction
             Debug.DrawRay(thrusterLocations[i].transform.position, -rotatedForce, Color.red, 0.2f);
         }
+
 
         // Check if the rotation angles have changed for any of the thrusters
         for (int i = 0; i < rotationAngles.Length; i++)
@@ -119,6 +137,16 @@ public class ThrustersWithRotation : MonoBehaviour
 
                 // Update the previous rotation angles
                 previousThrusterEulerAngles[i] = rotationAngles[i];
+            }
+        }
+
+        // Check if the pulse duration has elapsed
+        if (Time.time - pulseStartTime > pulseDuration)
+        {
+            // Stop applying the force
+            for (int i = 0; i < thrusterLocations.Length; i++)
+            {
+                thrusterMagnitudes[i] = 0f;
             }
         }
 
